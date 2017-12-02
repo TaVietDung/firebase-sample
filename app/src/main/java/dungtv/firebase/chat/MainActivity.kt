@@ -16,18 +16,29 @@
 
 package dungtv.firebase.chat
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.support.design.widget.TabLayout
 import android.support.v4.app.Fragment
 import android.support.v4.app.FragmentPagerAdapter
 import android.support.v4.content.ContextCompat
 import android.support.v4.view.ViewPager
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.InterstitialAd
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.crash.FirebaseCrash
+import dungtv.firebase.chat.fcm.MyFirebaseMessagingService
 import dungtv.firebase.chat.fragment.MyPostsFragment
 import dungtv.firebase.chat.fragment.MyTopPostsFragment
 import dungtv.firebase.chat.fragment.RecentPostsFragment
@@ -39,10 +50,19 @@ class MainActivity : BaseActivity() {
 
     private var mPagerAdapter: FragmentPagerAdapter? = null
     private var mViewPager: ViewPager? = null
+    private lateinit var mAdView: AdView
+    private lateinit var mInterstitialAd: InterstitialAd
+    private lateinit var mFirebaseAnalytics: FirebaseAnalytics
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        FirebaseCrash.log("MainActivity Created")
+        initAnalytics()
+        initAdView()
+
+        initInterstitialAd()
 
         // Create the adapter that will return a fragment for each section
         mPagerAdapter = object : FragmentPagerAdapter(supportFragmentManager) {
@@ -72,6 +92,51 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this@MainActivity, NewPostActivity::class.java)) }
 
         initUI()
+        initNotification()
+    }
+
+    private fun initNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Create channel to show notifications.
+            val channelId = getString(R.string.default_notification_channel_id)
+            val channelName = getString(R.string.default_notification_channel_name)
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager!!.createNotificationChannel(NotificationChannel(channelId,
+                    channelName, NotificationManager.IMPORTANCE_LOW))
+        }
+    }
+
+    private fun initAnalytics() {
+        mFirebaseAnalytics = FirebaseAnalytics.getInstance(this)
+        val params = Bundle()
+        params.putString("Screen", "MainActivity")
+        mFirebaseAnalytics.logEvent("logEvent", params)
+        mFirebaseAnalytics.setCurrentScreen(this, "MainActivity setCurrentScreen", null /* class override */)
+        mFirebaseAnalytics.setUserProperty("setUserProperty0", "setUserProperty1")
+    }
+
+    private fun initInterstitialAd() {
+        mInterstitialAd = InterstitialAd(this)
+        mInterstitialAd.adUnitId = getString(R.string.interstitial_ad_unit_id)
+
+        mInterstitialAd.adListener = object : AdListener() {
+            override fun onAdClosed() {
+                requestNewInterstitial()
+            }
+
+            override fun onAdLoaded() {
+            }
+
+            override fun onAdFailedToLoad(i: Int) {
+
+            }
+        }
+    }
+
+    private fun initAdView() {
+        mAdView = findViewById(R.id.adView)
+        val adRequest = AdRequest.Builder().build()
+        mAdView.loadAd(adRequest)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -180,4 +245,41 @@ class MainActivity : BaseActivity() {
 //        }
     }
 
+    /** Called before the activity is destroyed  */
+    public override fun onDestroy() {
+        if (mAdView != null) {
+            mAdView.destroy()
+        }
+        super.onDestroy()
+    }
+
+    /** Called when leaving the activity  */
+    public override fun onPause() {
+        if (mAdView != null) {
+            mAdView.pause()
+        }
+        super.onPause()
+    }
+
+    /** Called when returning to the activity  */
+    public override fun onResume() {
+        super.onResume()
+        if (mAdView != null) {
+            mAdView.resume()
+        }
+        if (!mInterstitialAd.isLoaded) {
+            requestNewInterstitial()
+        }
+    }
+
+    /**
+     * Load a new interstitial ad asynchronously.
+     */
+    // [START request_new_interstitial]
+    private fun requestNewInterstitial() {
+        val adRequest = AdRequest.Builder()
+                .build()
+
+        mInterstitialAd.loadAd(adRequest)
+    }
 }
